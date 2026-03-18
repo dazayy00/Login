@@ -1,5 +1,7 @@
 package pruebas.Infraestructure.Adapters;
 
+import lombok.Builder;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import pruebas.Domain.Model.User;
@@ -11,6 +13,7 @@ import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
+
 public class JpaUserRepositoryAdapter implements UserRepositoryPort {
 
     private final JpaUserRepository repository;
@@ -22,9 +25,7 @@ public class JpaUserRepositoryAdapter implements UserRepositoryPort {
 
     @Override
     public User save(User user) {
-
         UserEntity entity = toEntity(user);
-
         return toDomain(repository.save(entity));
     }
 
@@ -33,23 +34,42 @@ public class JpaUserRepositoryAdapter implements UserRepositoryPort {
         return repository.findByResetToken(token).map(this::toDomain);
     }
 
-    private User toDomain(UserEntity entity) {
-
-        return User.builder()
-                .id(entity.getId())
-                .email(entity.getEmail())
-                .password(entity.getPassword())
-                .resetToken(entity.getResetToken())
-                .build();
+    @Override
+    public Optional<User> findByVerificationCode(String code) {
+        return repository.findByVerificationCode(code).map(this::toDomain);
     }
 
-    private UserEntity toEntity(User user) {
+    // ── Mapeos ─────────────────────────────────────────────────────────────────
 
+    private User toDomain(UserEntity e) {
+        return new User(
+                e.getId(),
+                e.getEmail(),
+                e.getPassword(),
+                e.getResetToken(),
+                e.getResetTokenExpiry(),
+                e.getVerificationCode(),
+                e.getVerificationCodeExpiry(),
+                e.isVerificationCodeUsed(),
+                e.getFailedVerificationAttempts(),
+                e.getLockedUntil(),
+                e.isActive()
+        );
+    }
+
+    private UserEntity toEntity(User u) {
         return UserEntity.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .password(user.getPassword())
-                .resetToken(user.getResetToken())
+                .id(u.getId())
+                .email(u.getEmail())
+                .password(u.getPassword())
+                .resetToken(u.getResetToken())
+                .resetTokenExpiry(u.getResetTokenExpiry())
+                .verificationCode(u.getVerificationCode())
+                .verificationCodeExpiry(u.getVerificationCodeExpiry())
+                .verificationCodeUsed(u.isVerificationCodeUsed())
+                .failedVerificationAttempts(u.getFailedVerificationAttempts())
+                .lockedUntil(u.getLockedUntil())
+                .active(u.isActive())
                 .build();
     }
 }

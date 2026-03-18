@@ -8,4 +8,5 @@ public interface UserRepositoryPort {
     User save(User user);
     Optional<User> findByEmail(String email);
     Optional<User> findByResetToken(String token);
+    Optional<User> findByVerificationCode(String code);
 }
