@@ -6,6 +6,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import pruebas.Application.DTO.LoginReq;
+import pruebas.Application.DTO.RegisterReq;
 import pruebas.Application.Services.AuthService;
 import pruebas.Domain.Model.User;
 
@@ -25,8 +27,13 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<Map<String, String>> register(@RequestBody User user) {
+    public ResponseEntity<Map<String, String>> register(@RequestBody RegisterReq req) {
+        User user = new User();
+        user.setEmail(req.getEmail());
+        user.setPassword(req.getPassword());
+
         authService.register(user);
+
         return ResponseEntity.ok(Map.of("message", "Usuario registrado exitosamente"));
     }
 
@@ -69,12 +76,6 @@ public class AuthController {
         return ResponseEntity.ok(Map.of(
                 "message", "Contraseña actualizada exitosamente",
                 "token", newToken));
-    }
-
-    @Data
-    static class LoginReq {
-        private String email;
-        private String password;
     }
 
     @Data static class ResetPasswordReq {
