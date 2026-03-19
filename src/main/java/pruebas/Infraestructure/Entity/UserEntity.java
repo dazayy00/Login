@@ -39,4 +39,7 @@ public class UserEntity {
 
     @Builder.Default
     private boolean active = true;
+
+    @Builder.Default
+    private int sessionVersion = 0;
 }

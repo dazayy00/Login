@@ -13,6 +13,7 @@ public class User {
     private int failedVerificationAttempts;
     private java.time.LocalDateTime lockedUntil;
     private boolean active;
+    private int sessionVersion;
 
     public User() {}
 
@@ -21,7 +22,7 @@ public class User {
                 String verificationCode, java.time.LocalDateTime verificationCodeExpiry,
                 boolean verificationCodeUsed,
                 int failedVerificationAttempts, java.time.LocalDateTime lockedUntil,
-                boolean active) {
+                boolean active, int sessionVersion) {
         this.id = id;
         this.email = email;
         this.password = password;
@@ -33,6 +34,7 @@ public class User {
         this.failedVerificationAttempts = failedVerificationAttempts;
         this.lockedUntil = lockedUntil;
         this.active = active;
+        this.sessionVersion = sessionVersion;
     }
 
     public Long getId() { return id; }
@@ -67,4 +69,7 @@ public class User {
 
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
+
+    public int getSessionVersion() { return sessionVersion; }
+    public void setSessionVersion(int sessionVersion) { this.sessionVersion = sessionVersion; }
 }

@@ -24,7 +24,6 @@ public class AuthService {
     private final JavaMailSender mailSender;
     private final AuditService auditService;
 
-
     @Value("${app.reset-token.expiry-minutes:15}")
     private int resetTokenExpiryMinutes;
 
@@ -34,199 +33,137 @@ public class AuthService {
     @Value("${app.verification.lockout-minutes:30}")
     private int lockoutMinutes;
 
-    @Value("${app.frontend.reset-url:http://localhost:4200/reset-password}")
-    private String frontendResetUrl;
-
     public String login(String email, String password) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Credenciales incorrectas"));
-
-        if (!user.isActive()) {
-            throw new RuntimeException("La cuenta está inactiva o bloqueada");
-        }
-
-        if (!passwordEncoder.matches(password, user.getPassword())) {
+        if (!user.isActive()) throw new RuntimeException("La cuenta está inactiva");
+        if (!passwordEncoder.matches(password, user.getPassword()))
             throw new RuntimeException("Credenciales incorrectas");
-        }
-
         auditService.log(email, "LOGIN_EXITOSO", null);
         return jwtService.generateToken(user);
     }
 
     public User register(User user) {
-        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
-            throw new RuntimeException("No se pudo completar el registro. Intente con otro correo.");
-        }
-
-        validatePasswordPolicy(user.getPassword());
-
+        if (userRepository.findByEmail(user.getEmail()).isPresent())
+            throw new RuntimeException("No se pudo completar el registro.");
+        validatePasswordPolicy(user.getPassword()); // RB4
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         user.setActive(true);
-        user.setFailedVerificationAttempts(0);
-
-        User saved = userRepository.save(user);
         auditService.log(user.getEmail(), "REGISTRO_USUARIO", null);
-        return saved;
+        return userRepository.save(user);
     }
 
     public void generateResetToken(String email) {
         userRepository.findByEmail(email).ifPresent(user -> {
             String token = UUID.randomUUID().toString();
             user.setResetToken(token);
-            user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(resetTokenExpiryMinutes)); // RB1
+            user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(resetTokenExpiryMinutes));
             userRepository.save(user);
-
-            String link = frontendResetUrl + "?token=" + token;
-            sendEmail(email,
-                    "Restablecimiento de contraseña",
-                    "Haz clic en el siguiente enlace para restablecer tu contraseña:\n" + link
-                            + "\n\nEste enlace expira en " + resetTokenExpiryMinutes + " minutos.");
-
+            sendEmail(email, "Restablecimiento", frontendResetUrl + "?token=" + token);
             auditService.log(email, "RESET_TOKEN_GENERADO", null);
         });
     }
 
     public void resetPassword(String token, String newPassword) {
         User user = userRepository.findByResetToken(token)
-                .orElseThrow(() -> new RuntimeException("El enlace no es válido o ha expirado"));
-
-        if (user.getResetTokenExpiry() == null || LocalDateTime.now().isAfter(user.getResetTokenExpiry())) {
-            throw new RuntimeException("El enlace ha expirado. Solicita uno nuevo.");
-        }
-
+                .orElseThrow(() -> new RuntimeException("Enlace no válido o expirado"));
+        if (LocalDateTime.now().isAfter(user.getResetTokenExpiry()))
+            throw new RuntimeException("El enlace ha expirado.");
         validatePasswordPolicy(newPassword);
-
         user.setPassword(passwordEncoder.encode(newPassword));
-
         user.setResetToken(null);
         user.setResetTokenExpiry(null);
-
-        user.setFailedVerificationAttempts(0);
-        user.setLockedUntil(null);
-
         userRepository.save(user);
-        auditService.log(user.getEmail(), "CONTRASENA_RESTABLECIDA", "Vía token de reset");
+        auditService.log(user.getEmail(), "CONTRASENA_RESTABLECIDA", null);
     }
 
     public void generateVerificationCode(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
-
         checkLockout(user);
-
         String code = generateSixDigitCode();
-        user.setVerificationCode(passwordEncoder.encode(code)); // guardado como hash (no en claro)
-        user.setVerificationCodeExpiry(LocalDateTime.now().plusMinutes(resetTokenExpiryMinutes)); // RB1
+        user.setVerificationCode(passwordEncoder.encode(code));
+        user.setVerificationCodeExpiry(LocalDateTime.now().plusMinutes(resetTokenExpiryMinutes));
         user.setVerificationCodeUsed(false);
         userRepository.save(user);
-
-        sendEmail(email,
-                "Código de verificación",
-                "Tu código de verificación es: " + code
-                        + "\n\nExpira en " + resetTokenExpiryMinutes + " minutos. No lo compartas.");
-
+        try {
+            sendEmail(email, "Código de verificación", "Tu código: " + code);
+        } catch (RuntimeException e) {
+            user.setVerificationCode(null);
+            user.setVerificationCodeExpiry(null);
+            userRepository.save(user);
+            auditService.log(email, "CODIGO_ENVIO_FALLIDO", null);
+            throw e;
+        }
         auditService.log(email, "CODIGO_VERIFICACION_ENVIADO", null);
     }
 
     public void validateVerificationCode(String email, String code) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
-
         checkLockout(user);
-
-        if (user.getVerificationCode() == null || user.getVerificationCodeExpiry() == null) {
-            throw new RuntimeException("No hay un código de verificación activo. Solicita uno nuevo.");
-        }
-
-        if (LocalDateTime.now().isAfter(user.getVerificationCodeExpiry())) {
-            auditService.log(email, "CODIGO_EXPIRADO", null);
-            throw new RuntimeException("El código ha expirado. Solicita uno nuevo.");
-        }
-
-        if (user.isVerificationCodeUsed()) {
-            throw new RuntimeException("Este código ya fue utilizado. Solicita uno nuevo.");
-        }
-
+        if (user.getVerificationCode() == null)
+            throw new RuntimeException("No hay código activo. Solicita uno nuevo.");
+        if (LocalDateTime.now().isAfter(user.getVerificationCodeExpiry()))
+            throw new RuntimeException("El código ha expirado.");
+        if (user.isVerificationCodeUsed())
+            throw new RuntimeException("Este código ya fue utilizado.");
         if (!passwordEncoder.matches(code, user.getVerificationCode())) {
             int attempts = user.getFailedVerificationAttempts() + 1;
             user.setFailedVerificationAttempts(attempts);
-
             if (attempts >= maxFailedAttempts) {
                 user.setLockedUntil(LocalDateTime.now().plusMinutes(lockoutMinutes));
                 userRepository.save(user);
-                auditService.log(email, "CUENTA_BLOQUEADA_INTENTOS", "Intentos: " + attempts);
-                throw new RuntimeException("Cuenta bloqueada temporalmente por múltiples intentos fallidos.");
+                auditService.log(email, "CUENTA_BLOQUEADA_INTENTOS", "intentos: " + attempts);
+                throw new RuntimeException("Cuenta bloqueada temporalmente.");
             }
-
             userRepository.save(user);
-            auditService.log(email, "CODIGO_INCORRECTO", "Intento " + attempts + " de " + maxFailedAttempts);
-            throw new RuntimeException("Código incorrecto. Intentos restantes: " + (maxFailedAttempts - attempts));
+            throw new RuntimeException("Código incorrecto. Restantes: " + (maxFailedAttempts - attempts));
         }
-
         user.setVerificationCodeUsed(true);
         user.setFailedVerificationAttempts(0);
         user.setLockedUntil(null);
         userRepository.save(user);
-
         auditService.log(email, "VERIFICACION_EXITOSA", null);
     }
 
-    public String changePassword(String email, String currentPassword, String newPassword) {
+    public String changePassword(String email, String current, String newPass) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
-
-        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+        if (!passwordEncoder.matches(current, user.getPassword()))
             throw new RuntimeException("La contraseña actual es incorrecta");
-        }
-
-        validatePasswordPolicy(newPassword);
-
-        user.setPassword(passwordEncoder.encode(newPassword));
-        user.setVerificationCode(null);
-        user.setVerificationCodeExpiry(null);
-        user.setVerificationCodeUsed(false);
-
+        validatePasswordPolicy(newPass);
+        user.setPassword(passwordEncoder.encode(newPass));
+        user.setVerificationCode(null); // RB5
         userRepository.save(user);
-        auditService.log(email, "CONTRASENA_CAMBIADA", "Acción sensible completada");
-
+        auditService.log(email, "CONTRASENA_CAMBIADA", null);
         return jwtService.generateToken(user);
     }
 
-    private void validatePasswordPolicy(String password) {
-        if (password == null || password.length() < 12) {
-            throw new RuntimeException("La contraseña debe tener al menos 12 caracteres");
-        }
-        if (!password.matches(".*[A-Z].*")) {
-            throw new RuntimeException("La contraseña debe contener al menos una letra mayúscula");
-        }
-        if (!password.matches(".*[a-z].*")) {
-            throw new RuntimeException("La contraseña debe contener al menos una letra minúscula");
-        }
-        if (!password.matches(".*[0-9].*")) {
-            throw new RuntimeException("La contraseña debe contener al menos un número");
-        }
-        if (!password.matches(".*[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>/?].*")) {
-            throw new RuntimeException("La contraseña debe contener al menos un símbolo especial");
-        }
+    private void validatePasswordPolicy(String p) {
+        if (p == null || p.length() < 12) throw new RuntimeException("Mínimo 12 caracteres");
+        if (!p.matches(".*[A-Z].*")) throw new RuntimeException("Falta mayúscula");
+        if (!p.matches(".*[a-z].*")) throw new RuntimeException("Falta minúscula");
+        if (!p.matches(".*[0-9].*")) throw new RuntimeException("Falta número");
+        if (!p.matches(".*[!@#$%^&*].*")) throw new RuntimeException("Falta símbolo");
     }
 
     private void checkLockout(User user) {
-        if (user.getLockedUntil() != null && LocalDateTime.now().isBefore(user.getLockedUntil())) {
-            throw new RuntimeException("Cuenta bloqueada temporalmente. Intenta de nuevo más tarde.");
-        }
+        if (user.getLockedUntil() != null && LocalDateTime.now().isBefore(user.getLockedUntil()))
+            throw new RuntimeException("Cuenta bloqueada temporalmente.");
     }
 
     private String generateSixDigitCode() {
-        SecureRandom random = new SecureRandom();
-        int code = 100000 + random.nextInt(900000);
-        return String.valueOf(code);
+        return String.valueOf(100000 + new SecureRandom().nextInt(900000));
     }
 
     private void sendEmail(String to, String subject, String body) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(to);
-        message.setSubject(subject);
-        message.setText(body);
-        mailSender.send(message);
+        try {
+            SimpleMailMessage m = new SimpleMailMessage();
+            m.setTo(to); m.setSubject(subject); m.setText(body);
+            mailSender.send(m);
+        } catch (Exception e) {
+            throw new RuntimeException("No se pudo enviar el correo. Intenta de nuevo.");
+        }
     }
 }
