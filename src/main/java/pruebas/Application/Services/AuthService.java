@@ -33,6 +33,9 @@ public class AuthService {
     @Value("${app.verification.lockout-minutes:30}")
     private int lockoutMinutes;
 
+    @Value("${app.frontend.url}")
+    private String frontendResetUrl;
+
     public String login(String email, String password) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Credenciales incorrectas"));

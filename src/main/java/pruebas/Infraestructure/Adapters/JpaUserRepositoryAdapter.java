@@ -39,37 +39,39 @@ public class JpaUserRepositoryAdapter implements UserRepositoryPort {
         return repository.findByVerificationCode(code).map(this::toDomain);
     }
 
-    // ── Mapeos ─────────────────────────────────────────────────────────────────
+    private User toDomain(UserEntity entity) {
 
-    private User toDomain(UserEntity e) {
-        return new User(
-                e.getId(),
-                e.getEmail(),
-                e.getPassword(),
-                e.getResetToken(),
-                e.getResetTokenExpiry(),
-                e.getVerificationCode(),
-                e.getVerificationCodeExpiry(),
-                e.isVerificationCodeUsed(),
-                e.getFailedVerificationAttempts(),
-                e.getLockedUntil(),
-                e.isActive()
-        );
+        return User.builder()
+                .id(entity.getId())
+                .email(entity.getEmail())
+                .password(entity.getPassword())
+                .resetToken(entity.getResetToken())
+                .resetTokenExpiry(entity.getResetTokenExpiry())
+                .verificationCode(entity.getVerificationCode())
+                .verificationCodeExpiry(entity.getVerificationCodeExpiry())
+                .verificationCodeUsed(entity.isVerificationCodeUsed())
+                .failedVerificationAttempts(entity.getFailedVerificationAttempts())
+                .lockedUntil(entity.getLockedUntil())
+                .active(entity.isActive())
+                .sessionVersion(entity.getSessionVersion())
+                .build();
     }
 
-    private UserEntity toEntity(User u) {
+    private UserEntity toEntity(User user) {
+
         return UserEntity.builder()
-                .id(u.getId())
-                .email(u.getEmail())
-                .password(u.getPassword())
-                .resetToken(u.getResetToken())
-                .resetTokenExpiry(u.getResetTokenExpiry())
-                .verificationCode(u.getVerificationCode())
-                .verificationCodeExpiry(u.getVerificationCodeExpiry())
-                .verificationCodeUsed(u.isVerificationCodeUsed())
-                .failedVerificationAttempts(u.getFailedVerificationAttempts())
-                .lockedUntil(u.getLockedUntil())
-                .active(u.isActive())
+                .id(user.getId())
+                .email(user.getEmail())
+                .password(user.getPassword())
+                .resetToken(user.getResetToken())
+                .resetTokenExpiry(user.getResetTokenExpiry())
+                .verificationCode(user.getVerificationCode())
+                .verificationCodeExpiry(user.getVerificationCodeExpiry())
+                .verificationCodeUsed(user.isVerificationCodeUsed())
+                .failedVerificationAttempts(user.getFailedVerificationAttempts())
+                .lockedUntil(user.getLockedUntil())
+                .active(user.isActive())
+                .sessionVersion(user.getSessionVersion())
                 .build();
     }
 }
